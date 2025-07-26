@@ -1,4 +1,4 @@
-# appuser.py
+# appuser.py (Final Version)
 
 import streamlit as st
 import os
@@ -17,14 +17,11 @@ st.title("📄 Chat with Our Documents")
 # --- SECRET & ENV SETUP ---
 try:
     OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
-    # Get Google credentials from Streamlit secrets
     google_creds_json_str = st.secrets["GOOGLE_CREDENTIALS_JSON"]
-    # Convert the string back to a dictionary
     google_creds_dict = json.loads(google_creds_json_str)
     
-    # Define paths for credentials and token
-    credentials_path = "google_creds.json"
-    token_path = "google_token.json"
+    # This path is temporary for the Streamlit server instance
+    credentials_path = "google_creds.json" 
 
     # Write the dictionary to a temporary file for the loader
     with open(credentials_path, "w") as f:
@@ -35,27 +32,26 @@ except (KeyError, FileNotFoundError) as e:
     st.stop()
 
 PERSIST_DIRECTORY = "./chroma_db"
-GOOGLE_FOLDER_ID = "1v3Nl5PoC3oD73uZTrROTit9KDO4eK1Ri" # IMPORTANT: Put your folder ID here!
+# IMPORTANT: Put your folder ID here!
+GOOGLE_FOLDER_ID = "1v3Nl5PoC3oD73uZTTrROTit9KD04eK1Ri"
 
 # --- KNOWLEDGE BASE LOGIC ---
 @st.cache_resource(show_spinner="Connecting to documents and building knowledge base...")
 def build_or_load_knowledge_base():
-    """
-    Build the knowledge base if it doesn't exist, otherwise load it.
-    """
+    """Build the knowledge base if it doesn't exist, otherwise load it."""
     if not os.path.exists(PERSIST_DIRECTORY):
         st.write("First-time setup: Building the knowledge base. This may take a few minutes...")
         
-        # 1. Load Documents
+        # 1. Load Documents using Service Account
         loader = GoogleDriveLoader(
             folder_id=GOOGLE_FOLDER_ID,
-            credentials_path=credentials_path,
-            token_path=token_path, 
+            # THIS IS THE KEY CHANGE: Use the service account key
+            service_account_key=credentials_path,
             recursive=False
         )
         documents = loader.load()
         if not documents:
-            st.error("No documents found in the specified Google Drive folder. Please check the folder ID and permissions.")
+            st.error("No documents found. Check folder ID and ensure the service account email has 'Viewer' access to the folder.")
             st.stop()
             
         # 2. Split Documents
@@ -80,7 +76,6 @@ def build_or_load_knowledge_base():
     return vector_store
 
 # --- MAIN APP LOGIC ---
-# IMPORTANT: Make sure to replace "YOUR_GOOGLE_DRIVE_FOLDER_ID" above
 if "YOUR_GOOGLE_DRIVE_FOLDER_ID" in GOOGLE_FOLDER_ID:
     st.warning("Please replace 'YOUR_GOOGLE_DRIVE_FOLDER_ID' in the script with your actual Google Drive folder ID.")
     st.stop()
