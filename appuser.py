@@ -35,7 +35,7 @@ except (KeyError, FileNotFoundError) as e:
     st.stop()
 
 PERSIST_DIRECTORY = "./chroma_db"
-GOOGLE_FOLDER_ID = "1v3Nl5PoC3oD73uZTTrROTit9KD04eK1Ri"
+GOOGLE_FOLDER_ID = "1DIdLKFlvopu3dhauAHGtdB5UK87CntNn"
 
 # --- KNOWLEDGE BASE LOGIC ---
 @st.cache_resource(show_spinner="Connecting to documents and building knowledge base...")
