@@ -1,0 +1,18 @@
+# Ignore Python cache files
+__pycache__/
+*.pyc
+
+# Ignore OS-specific files
+.DS_Store
+
+# Ignore environment files with secrets
+.env
+secrets.toml
+
+# Ignore Google credentials and tokens
+credentials.json
+token.json
+
+# Ignore large database files if needed (optional)
+# If your chroma_db is too big for GitHub (>100MB), uncomment the line below
+# chroma_db/
