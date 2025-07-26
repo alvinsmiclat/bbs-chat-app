@@ -12,7 +12,7 @@ secrets.toml
 # Ignore Google credentials and tokens
 credentials.json
 token.json
-
+chroma_db/
 # Ignore large database files if needed (optional)
 # If your chroma_db is too big for GitHub (>100MB), uncomment the line below
 # chroma_db/
