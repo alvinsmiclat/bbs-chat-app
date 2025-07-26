@@ -34,7 +34,6 @@ except (KeyError, FileNotFoundError) as e:
 PERSIST_DIRECTORY = "./chroma_db"
 # IMPORTANT: Put your folder ID here!
 GOOGLE_FOLDER_ID = "1v3Nl5PoC3oD73uZTTrROTit9KD04eK1Ri"
-
 # --- KNOWLEDGE BASE LOGIC ---
 @st.cache_resource(show_spinner="Connecting to documents and building knowledge base...")
 def build_or_load_knowledge_base():
@@ -108,3 +107,4 @@ if query:
                     st.info(f"Source: {doc.metadata.get('source', 'Unknown')}")
         except Exception as e:
             st.error(f"An error occurred while processing your question: {e}")
+# Final check.
