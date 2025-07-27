@@ -104,7 +104,7 @@ qa_chain = RetrievalQA.from_chain_type(
 st.success("Knowledge base is ready. You can now ask questions.")
 
 # Create the user interface for asking questions.
-query = st.text_input("Ask a question about the content of your documentss:")
+query = st.text_input("Ask a question about the content of your documents:")
 
 if query:
     with st.spinner("Searching for the answer..."):
