@@ -15,7 +15,7 @@ from langchain_openai import ChatOpenAI
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Document Chat", layout="wide")
-st.title("📄 Chat with Our Documents")
+st.title("📄 Bina Bangsa School Sandbox")
 
 # --- SECRET & ENV SETUP ---
 try:
