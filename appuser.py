@@ -86,7 +86,7 @@ with st.sidebar:
         )
 
 # --- MAIN CHAT INTERFACE ---
-st.title("Bina Bangsa School Document Assistant 🤖")
+st.title("Bina Bangsa School AI App 🤖")
 st.markdown("Welcome! I am your AI-powered assistant. I can answer questions based on our internal school documents. Please ask me a question below.")
 
 # Initialize chat history in session state
