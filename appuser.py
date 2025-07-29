@@ -1,6 +1,4 @@
-# appuser.py (Final Version with Tuned Retriever)
-
-# This is the crucial hot-fix for ChromaDB on Streamlit Community Cloud.
+# appuser.py (Final Diagnostic Version 2)
 __import__('pysqlite3')
 import sys
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
@@ -14,30 +12,35 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain.chains import RetrievalQA
 from langchain_openai import ChatOpenAI
-from langchain.prompts import PromptTemplate
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Bina Bangsa School Sandbox", layout="wide")
-st.title("Bina Bangsa School Sandbox")
+st.set_page_config(page_title="Document Chat", layout="wide")
+st.title("📄 Bina Bangsa School Sandbox")
 
 # --- SECRET & ENV SETUP ---
 try:
     OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
     google_creds_json_str = st.secrets["GOOGLE_CREDENTIALS_JSON"]
     google_creds_dict = json.loads(google_creds_json_str)
+    
+    # --- START OF DIAGNOSTIC CODE ---
+    # We will get the project_id from the credentials and display it.
+    creds_project_id = google_creds_dict.get("project_id")
+    st.info(f"Attempting to use credentials for Google Cloud Project ID: '{creds_project_id}'")
+    # --- END OF DIAGNOSTIC CODE ---
+
     credentials_path = "google_creds.json"
     with open(credentials_path, "w") as f:
         json.dump(google_creds_dict, f)
+
 except (KeyError, FileNotFoundError) as e:
     st.error(f"Missing secrets! Please ensure both OPENAI_API_KEY and GOOGLE_CREDENTIALS_JSON are set in your Streamlit secrets. Error: {e}")
     st.stop()
 
-# --- CONSTANTS ---
 PERSIST_DIRECTORY = "./chroma_db"
-# This should be your final, working Google Drive Folder ID.
-GOOGLE_FOLDER_ID = "1DldLKFlvopu3dhauAHGtdB5UK87CntNn"
+GOOGLE_FOLDER_ID = "1DIdLKFlvopu3dhauAHGtdB5UK87CntNn"
 
-# --- KNOWLEDGE BASE LOGIC (unchanged) ---
+# --- KNOWLEDGE BASE LOGIC ---
 @st.cache_resource(show_spinner="Connecting to documents and building knowledge base...")
 def build_or_load_knowledge_base():
     if not os.path.exists(PERSIST_DIRECTORY):
@@ -51,7 +54,7 @@ def build_or_load_knowledge_base():
         )
         documents = loader.load()
         if not documents:
-            st.error("No compatible documents (Google Docs or PDFs) found in the folder. Please check the Folder ID and sharing permissions.")
+            st.error("No compatible documents (Google Docs or PDFs) found in the folder. Please check the folder ID and sharing permissions.")
             st.stop()
             
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
@@ -65,7 +68,7 @@ def build_or_load_knowledge_base():
         )
     else:
         st.write("Loading existing knowledge base...")
-        embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_KEY)
+        embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
         vector_store = Chroma(
             persist_directory=PERSIST_DIRECTORY,
             embedding_function=embeddings
@@ -73,39 +76,19 @@ def build_or_load_knowledge_base():
     return vector_store
 
 # --- MAIN APP LOGIC ---
+if "YOUR_GOOGLE_DRIVE_FOLDER_ID" in GOOGLE_FOLDER_ID: 
+    st.warning("ERROR: Please replace 'YOUR_GOOGLE_DRIVE_FOLDER_ID' in the script with your actual Google Drive folder ID.")
+    st.stop()
+
 vector_store = build_or_load_knowledge_base()
-
-prompt_template = """
-Use the following pieces of context to answer the user's question. This is a closed-book task.
-If you don't know the answer based on the context provided, just say that you don't know the answer. Do not try to make up an answer.
----
-CONTEXT: {context}
----
-QUESTION: {question}
-Answer:
-"""
-STRICT_PROMPT = PromptTemplate(
-    template=prompt_template, input_variables=["context", "question"]
-)
-
-# --- THE KEY CHANGE IS HERE ---
-# We are telling the retriever to fetch the top 5 results instead of the default.
-retriever = vector_store.as_retriever(search_kwargs={'k': 5})
-
-# Create the Question-Answering chain, now using our tuned retriever.
 qa_chain = RetrievalQA.from_chain_type(
     llm=ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0, openai_api_key=OPENAI_API_KEY),
     chain_type="stuff",
-    retriever=retriever, # <-- Use the new retriever
-    return_source_documents=True,
-    chain_type_kwargs={"prompt": STRICT_PROMPT}
+    retriever=vector_store.as_retriever(),
+    return_source_documents=True
 )
-
 st.success("Knowledge base is ready. You can now ask questions.")
-
-# Create the user interface for asking questions.
 query = st.text_input("Ask a question about the content of your documents:")
-
 if query:
     with st.spinner("Searching for the answer..."):
         try:
