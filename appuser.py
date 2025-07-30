@@ -1,4 +1,4 @@
-# appuser.py (Final Version built on the user-confirmed stable base)
+# appuser.py (Final Version with Deprecation Warning Fixed)
 
 # This is the crucial hot-fix for ChromaDB on Streamlit Community Cloud.
 __import__('pysqlite3')
@@ -78,7 +78,7 @@ def build_or_load_knowledge_base():
 # --- MAIN APP LOGIC (This is from your stable code) ---
 vector_store = build_or_load_knowledge_base()
 
-# The QA chain is now configured WITHOUT the strict prompt, matching your working version.
+# The QA chain is configured WITHOUT the strict prompt, matching your working version.
 qa_chain = RetrievalQA.from_chain_type(
     llm=ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0, openai_api_key=OPENAI_API_KEY),
     chain_type="stuff",
@@ -90,7 +90,10 @@ qa_chain = RetrievalQA.from_chain_type(
 
 with st.sidebar:
     if os.path.exists("logo.png"):
-        st.image("logo.png", use_column_width=True)
+        # --- THIS IS THE ONLY CHANGE ---
+        # Changed `use_column_width` to the new `use_container_width`
+        st.image("logo.png", use_container_width=True)
+        # --- END OF CHANGE ---
     st.header("About This App")
     st.markdown("""
     This is an intelligent assistant for **Bina Bangsa School**. 
