@@ -1,6 +1,6 @@
-# appuser.py (The Final Corrected Version)
+# appuser.py (Final Version with Professional UI/UX)
 
-# This is the crucial hot-fix for ChromaDB on Streamlit Cloud.
+# This is the crucial hot-fix for ChromaDB on Streamlit Community Cloud.
 __import__('pysqlite3')
 import sys
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
@@ -14,11 +14,15 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain.chains import RetrievalQA
 from langchain_openai import ChatOpenAI
-from langchain.prompts import PromptTemplate # <-- Import for the strict prompt
+from langchain.prompts import PromptTemplate
 
-# --- CONFIGURATION ---
-st.set_page_config(page_title="Bina Bangsa School Sandbox", layout="wide")
-st.title("Bina Bangsa School Sandbox")
+# --- PAGE CONFIGURATION ---
+# This is a one-time setup for the page.
+st.set_page_config(
+    page_title="BBS Document Assistant",
+    page_icon="📄", # A relevant emoji for the page icon
+    layout="wide"
+)
 
 # --- SECRET & ENV SETUP ---
 try:
@@ -28,21 +32,19 @@ try:
     credentials_path = "google_creds.json"
     with open(credentials_path, "w") as f:
         json.dump(google_creds_dict, f)
-except (KeyError, FileNotFoundError) as e:
-    st.error(f"Missing secrets! Please ensure both OPENAI_API_KEY and GOOGLE_CREDENTIALS_JSON are set in your Streamlit secrets. Error: {e}")
+except (KeyError, FileNotFoundError):
+    st.error("🚨 **Error:** Secrets not found. This app is not configured correctly. Please contact the administrator.")
     st.stop()
 
 # --- CONSTANTS ---
 PERSIST_DIRECTORY = "./chroma_db"
-# This should be your final, working Google Drive Folder ID.
 GOOGLE_FOLDER_ID = "1DldLKFlvopu3dhauAHGtdB5UK87CntNn"
 
 # --- KNOWLEDGE BASE LOGIC ---
-@st.cache_resource(show_spinner="Connecting to documents and building knowledge base...")
+@st.cache_resource(show_spinner="Connecting to documents and preparing knowledge base...")
 def build_or_load_knowledge_base():
     if not os.path.exists(PERSIST_DIRECTORY):
-        st.write("First-time setup: Building the knowledge base. This may take a few minutes...")
-        
+        # First-time setup message will be shown by the spinner
         loader = GoogleDriveLoader(
             folder_id=GOOGLE_FOLDER_ID,
             file_types=["document", "pdf"],
@@ -51,12 +53,10 @@ def build_or_load_knowledge_base():
         )
         documents = loader.load()
         if not documents:
-            st.error("No compatible documents (Google Docs or PDFs) found in the folder. Please check the Folder ID and sharing permissions.")
+            st.error("No compatible documents (Google Docs or PDFs) found in the folder. Please check the folder ID and sharing permissions.")
             st.stop()
-            
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
         splits = text_splitter.split_documents(documents)
-        
         embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
         vector_store = Chroma.from_documents(
             documents=splits,
@@ -64,7 +64,6 @@ def build_or_load_knowledge_base():
             persist_directory=PERSIST_DIRECTORY
         )
     else:
-        st.write("Loading existing knowledge base...")
         embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
         vector_store = Chroma(
             persist_directory=PERSIST_DIRECTORY,
@@ -75,8 +74,6 @@ def build_or_load_knowledge_base():
 # --- MAIN APP LOGIC ---
 vector_store = build_or_load_knowledge_base()
 
-# --- Grounding Prompt Template ---
-# This template provides strict instructions to the AI.
 prompt_template = """
 Use the following pieces of context to answer the user's question. This is a closed-book task.
 If you don't know the answer based on the context provided, just say that you don't know the answer. Do not try to make up an answer.
@@ -90,11 +87,8 @@ STRICT_PROMPT = PromptTemplate(
     template=prompt_template, input_variables=["context", "question"]
 )
 
-# --- Tuned Retriever ---
-# This tells the search system to look for the top 5 most relevant document chunks.
 retriever = vector_store.as_retriever(search_kwargs={'k': 5})
 
-# Create the Question-Answering chain with the strict prompt and tuned retriever.
 qa_chain = RetrievalQA.from_chain_type(
     llm=ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0, openai_api_key=OPENAI_API_KEY),
     chain_type="stuff",
@@ -103,20 +97,60 @@ qa_chain = RetrievalQA.from_chain_type(
     chain_type_kwargs={"prompt": STRICT_PROMPT}
 )
 
-st.success("Knowledge base is ready. You can now ask questions.")
+# --- UI/UX DESIGN ---
 
-# Create the user interface for asking questions.
-query = st.text_input("Ask a question about the content of your documents:")
+# Sidebar for information and instructions
+with st.sidebar:
+    st.header("About This App")
+    st.markdown("""
+    This is an intelligent assistant for **Bina Bangsa School**. 
+    
+    It is connected to a specific set of internal documents and can answer questions based only on their content.
+    """)
+    
+    st.header("How to Use")
+    st.markdown("""
+    1.  Type your question in the text box on the main page.
+    2.  Press Enter to get the answer.
+    3.  The assistant will search the documents and provide a response.
+    4.  If the answer isn't in the documents, it will say so.
+    """)
+    st.info("The knowledge base was updated when this app was last deployed. For new documents to be included, the app needs to be refreshed by an admin.")
 
-if query:
-    with st.spinner("Searching for the answer..."):
-        try:
-            result = qa_chain.invoke({"query": query})
-            st.subheader("Answer")
-            st.write(result["result"])
-            with st.expander("Show Source Documents"):
-                st.write("The answer was generated from the following sources:")
-                for doc in result["source_documents"]:
-                    st.info(f"Source: {doc.metadata.get('source', 'Unknown')}")
-        except Exception as e:
-            st.error(f"An error occurred while processing your question: {e}")
+
+# Main page title and introduction
+st.title("📄 Bina Bangsa School Document Assistant")
+st.markdown("### Your intelligent search tool for school policies and documents.")
+st.write("---") # A horizontal line for visual separation
+
+# Container for the main interaction
+chat_container = st.container()
+
+with chat_container:
+    # Get user input
+    query = st.text_input(
+        "**Ask a question about the content of our documents:**",
+        placeholder="e.g., What is the school's policy on password security?"
+    )
+
+    if query:
+        with st.spinner("Searching the knowledge base for an answer..."):
+            try:
+                # Get the result from the QA chain
+                result = qa_chain.invoke({"query": query})
+                
+                # Display the answer in a styled box
+                st.markdown("#### Answer")
+                st.info(result["result"])
+
+                # Display the source documents in an expander
+                with st.expander("Click to see the source documents used for this answer"):
+                    for doc in result["source_documents"]:
+                        # We use st.markdown to format the source nicely
+                        st.markdown(f"**Source:** `{doc.metadata.get('source', 'Unknown')}`")
+                        # Display a snippet of the page content
+                        st.markdown(f"> {doc.page_content[:350]}...")
+                        st.write("---")
+
+            except Exception as e:
+                st.error(f"An error occurred while processing your question: {e}")
