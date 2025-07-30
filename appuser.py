@@ -1,85 +1,54 @@
-# appuser.py (Final Version with OCR and MMR Retriever)
+# appuser.py (Final, Stable, Offline Version)
 
-# This is the crucial hot-fix for ChromaDB on Streamlit Community Cloud.
+# Hot-fix for ChromaDB
 __import__('pysqlite3')
 import sys
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 import streamlit as st
 import os
-import json
-from langchain_community.document_loaders import GoogleDriveLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+import zipfile
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain.chains import RetrievalQA
 from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
 
-# --- PAGE CONFIGURATION ---
-st.set_page_config(
-    page_title="BBS Document Assistant",
-    page_icon="📄",
-    layout="wide"
-)
+st.set_page_config(page_title="BBS Document Assistant", page_icon="📄", layout="wide")
+st.title("📄 Bina Bangsa School Document Assistant")
+st.markdown("### Your intelligent search tool for school policies and documents.")
+st.write("---")
 
-# --- SECRET & ENV SETUP ---
+# --- Load Secrets ---
 try:
     OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
-    google_creds_json_str = st.secrets["GOOGLE_CREDENTIALS_JSON"]
-    google_creds_dict = json.loads(google_creds_json_str)
-    credentials_path = "google_creds.json"
-    with open(credentials_path, "w") as f:
-        json.dump(google_creds_dict, f)
-except (KeyError, FileNotFoundError) as e:
+except KeyError:
     st.error("🚨 **Error:** Secrets not found. This app is not configured correctly. Please contact the administrator.")
     st.stop()
 
-# --- CONSTANTS ---
 PERSIST_DIRECTORY = "./chroma_db"
-GOOGLE_FOLDER_ID = "1DldLKFlvopu3dhauAHGtdB5UK87CntNn"
+DB_ZIP_PATH = "./chroma_db.zip"
 
-# --- KNOWLEDGE BASE LOGIC (NOW WITH OCR) ---
-@st.cache_resource(show_spinner="Connecting to documents and preparing knowledge base...")
-def build_or_load_knowledge_base():
+# --- KNOWLEDGE BASE LOGIC (NOW OFFLINE) ---
+@st.cache_resource(show_spinner="Loading and preparing the knowledge base...")
+def load_knowledge_base():
     if not os.path.exists(PERSIST_DIRECTORY):
-        st.write("First-time setup: Building the knowledge base. This may take a few minutes...")
-        
-        # --- THIS IS THE KEY CHANGE ---
-        # We are using unstructured's loader, which includes OCR for scanned PDFs.
-        loader = GoogleDriveLoader(
-            folder_id=GOOGLE_FOLDER_ID,
-            file_types=["document", "pdf"],
-            service_account_key=credentials_path,
-            recursive=False,
-            # This tells the loader to use the advanced unstructured library for PDFs.
-            loader_kwargs={'strategy': 'hi_res'} 
-        )
-        documents = loader.load()
-        if not documents:
-            st.error("No compatible documents found. Please check the Folder ID and that the Service Account has 'Viewer' access.")
+        if not os.path.exists(DB_ZIP_PATH):
+            st.error("FATAL: chroma_db.zip not found in the repository. The app cannot function.")
             st.stop()
-            
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
-        splits = text_splitter.split_documents(documents)
         
-        embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-        vector_store = Chroma.from_documents(
-            documents=splits,
-            embedding=embeddings,
-            persist_directory=PERSIST_DIRECTORY
-        )
-    else:
-        st.write("Loading existing knowledge base...")
-        embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
-        vector_store = Chroma(
-            persist_directory=PERSIST_DIRECTORY,
-            embedding_function=embeddings
-        )
+        with zipfile.ZipFile(DB_ZIP_PATH, 'r') as zip_ref:
+            zip_ref.extractall('.')
+
+    embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+    vector_store = Chroma(
+        persist_directory=PERSIST_DIRECTORY,
+        embedding_function=embeddings
+    )
     return vector_store
 
 # --- MAIN APP LOGIC ---
-vector_store = build_or_load_knowledge_base()
+vector_store = load_knowledge_base()
 
 prompt_template = """
 Use the following pieces of context to answer the user's question. This is a closed-book task.
@@ -100,7 +69,7 @@ qa_chain = RetrievalQA.from_chain_type(
     llm=ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0, openai_api_key=OPENAI_API_KEY),
     chain_type="stuff",
     retriever=retriever,
-    return_source_documents=True,
+    return_source_documents=False,
     chain_type_kwargs={"prompt": STRICT_PROMPT}
 )
 
@@ -112,10 +81,6 @@ with st.sidebar:
     st.markdown("This is an intelligent assistant for **Bina Bangsa School**.")
     st.header("How to Use")
     st.markdown("Type your question in the chat box at the bottom of the screen and press Enter.")
-
-st.title("📄 Bina Bangsa School Document Assistant")
-st.markdown("### Your intelligent search tool for school policies and documents.")
-st.write("---")
 
 # --- CHAT INTERFACE LOGIC ---
 if "messages" not in st.session_state:
