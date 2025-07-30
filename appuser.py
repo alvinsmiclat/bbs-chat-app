@@ -1,4 +1,4 @@
-# appuser.py (Final Version with Deprecation Warning Fixed)
+# appuser.py (Final Version with MMR Retriever for Smarter Search)
 
 # This is the crucial hot-fix for ChromaDB on Streamlit Community Cloud.
 __import__('pysqlite3')
@@ -14,7 +14,7 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain.chains import RetrievalQA
 from langchain_openai import ChatOpenAI
-# NOTE: PromptTemplate is not needed in this version because we are not using the strict prompt.
+from langchain.prompts import PromptTemplate
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
@@ -31,7 +31,7 @@ try:
     credentials_path = "google_creds.json"
     with open(credentials_path, "w") as f:
         json.dump(google_creds_dict, f)
-except (KeyError, FileNotFoundError) as e:
+except (KeyError, FileNotFoundError):
     st.error("🚨 **Error:** Secrets not found. This app is not configured correctly. Please contact the administrator.")
     st.stop()
 
@@ -75,25 +75,40 @@ def build_or_load_knowledge_base():
         )
     return vector_store
 
-# --- MAIN APP LOGIC (This is from your stable code) ---
+# --- MAIN APP LOGIC ---
 vector_store = build_or_load_knowledge_base()
 
 # The QA chain is configured WITHOUT the strict prompt, matching your working version.
+# NOTE: I am putting the STRICT prompt back in, as the "I don't know" answer shows it was working.
+prompt_template = """
+Use the following pieces of context to answer the user's question. This is a closed-book task.
+If you don't know the answer based on the context provided, just say that you don't know the answer. Do not try to make up an answer.
+---
+CONTEXT: {context}
+---
+QUESTION: {question}
+Answer:
+"""
+STRICT_PROMPT = PromptTemplate(
+    template=prompt_template, input_variables=["context", "question"]
+)
+
+# --- THIS IS THE KEY CHANGE ---
+# We are now using the "mmr" search type to find more relevant and diverse results.
+retriever = vector_store.as_retriever(search_type="mmr", search_kwargs={'k': 5})
+
 qa_chain = RetrievalQA.from_chain_type(
     llm=ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0, openai_api_key=OPENAI_API_KEY),
     chain_type="stuff",
-    retriever=vector_store.as_retriever(),
-    return_source_documents=True # We will keep this True but hide it from the UI.
+    retriever=retriever, # Using the new, smarter retriever
+    return_source_documents=True,
+    chain_type_kwargs={"prompt": STRICT_PROMPT} # Using the strict prompt
 )
 
-# --- NEW UI/UX DESIGN ---
-
+# --- UI/UX DESIGN ---
 with st.sidebar:
     if os.path.exists("logo.png"):
-        # --- THIS IS THE ONLY CHANGE ---
-        # Changed `use_column_width` to the new `use_container_width`
         st.image("logo.png", use_container_width=True)
-        # --- END OF CHANGE ---
     st.header("About This App")
     st.markdown("""
     This is an intelligent assistant for **Bina Bangsa School**. 
@@ -111,7 +126,7 @@ st.title("📄 Bina Bangsa School Document Assistant")
 st.markdown("### Your intelligent search tool for school policies and documents.")
 st.write("---")
 
-# --- NEW CHAT INTERFACE LOGIC ---
+# --- CHAT INTERFACE LOGIC ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
