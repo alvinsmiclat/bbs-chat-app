@@ -1,4 +1,4 @@
-# builder.py (Final Corrected Version - Bypasses Caching)
+# builder.py (Final Diagnostic Version)
 
 __import__('pysqlite3')
 import sys
@@ -8,7 +8,7 @@ import streamlit as st
 import os
 import json
 import shutil
-import time # <-- NEW IMPORT
+import time
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
@@ -24,7 +24,7 @@ except Exception as e:
     st.error(f"Failed to load secrets: {e}")
     st.stop()
 
-# Use the new, unique filename
+# Using the unique filename to avoid cache collisions
 INPUT_JSON = "./final_data.json" 
 
 if st.button("Build Knowledge Base from JSON"):
@@ -32,38 +32,40 @@ if st.button("Build Knowledge Base from JSON"):
         st.error(f"FATAL: '{INPUT_JSON}' not found in repository. Please run the local extractor script and push the file.")
         st.stop()
         
-    # --- THIS IS THE NEW, SIMPLER LOGIC ---
-    # Create a new, unique directory name using the current timestamp
+    # --- THIS IS THE CRUCIAL DIAGNOSTIC STEP ---
+    # We will check the size of the JSON file on the server and display it.
+    try:
+        file_size_on_server = os.path.getsize(INPUT_JSON)
+        st.info(f"File size of '{INPUT_JSON}' found on the server: {file_size_on_server} bytes.")
+        st.warning("Compare this to the size on your Mac (which should be ~281,234 bytes).")
+    except Exception as e:
+        st.error(f"Could not check file size: {e}")
+    # --- END OF DIAGNOSTIC STEP ---
+
+    # (The rest of the builder code remains the same)
     timestamp = int(time.time())
     PERSIST_DIRECTORY = f"./chroma_db_{timestamp}"
-    st.info(f"Creating a fresh database in new directory: {PERSIST_DIRECTORY}")
-    # --- END OF NEW LOGIC ---
-
+    
     with st.spinner("Loading text data and building fresh knowledge base..."):
         try:
-            # 1. Load the clean text from our JSON file
             with open(INPUT_JSON, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
             documents = [Document(page_content=item['page_content'], metadata=item['metadata']) for item in data]
             st.write(f"Loaded {len(documents)} document sections from JSON file.")
 
-            # 2. Split
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
             splits = text_splitter.split_documents(documents)
             st.write(f"Split documents into {len(splits)} chunks.")
 
-            # 3. Create Vector Store (in the new, unique directory)
             embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
             vector_store = Chroma.from_documents(
                 documents=splits,
                 embedding=embeddings,
                 persist_directory=PERSIST_DIRECTORY
             )
-            st.success(f"Fresh Knowledge Base built successfully in '{PERSIST_DIRECTORY}'!")
+            st.success(f"Fresh Knowledge Base built successfully!")
 
-            # 4. Zip and provide a download link
-            # We will still name the downloaded file chroma_db.zip for consistency
             zip_filename = "chroma_db" 
             shutil.make_archive(zip_filename, 'zip', PERSIST_DIRECTORY)
             with open(f"{zip_filename}.zip", "rb") as f:
