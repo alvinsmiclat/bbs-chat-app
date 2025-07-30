@@ -1,4 +1,4 @@
-# appuser.py (Final Version with OCR and MMR Retriever)
+# appuser.py (Final Version with MMR Retriever for Smarter Search)
 
 # This is the crucial hot-fix for ChromaDB on Streamlit Community Cloud.
 __import__('pysqlite3')
@@ -31,33 +31,30 @@ try:
     credentials_path = "google_creds.json"
     with open(credentials_path, "w") as f:
         json.dump(google_creds_dict, f)
-except (KeyError, FileNotFoundError) as e:
+except (KeyError, FileNotFoundError):
     st.error("🚨 **Error:** Secrets not found. This app is not configured correctly. Please contact the administrator.")
     st.stop()
 
 # --- CONSTANTS ---
 PERSIST_DIRECTORY = "./chroma_db"
+# This ID is from the version you confirmed was working.
 GOOGLE_FOLDER_ID = "1DldLKFlvopu3dhauAHGtdB5UK87CntNn"
 
-# --- KNOWLEDGE BASE LOGIC (NOW WITH OCR) ---
+# --- KNOWLEDGE BASE LOGIC (This is from your stable code) ---
 @st.cache_resource(show_spinner="Connecting to documents and preparing knowledge base...")
 def build_or_load_knowledge_base():
     if not os.path.exists(PERSIST_DIRECTORY):
         st.write("First-time setup: Building the knowledge base. This may take a few minutes...")
         
-        # --- THIS IS THE KEY CHANGE ---
-        # We are using unstructured's loader, which includes OCR for scanned PDFs.
         loader = GoogleDriveLoader(
             folder_id=GOOGLE_FOLDER_ID,
             file_types=["document", "pdf"],
             service_account_key=credentials_path,
-            recursive=False,
-            # This tells the loader to use the advanced unstructured library for PDFs.
-            loader_kwargs={'strategy': 'hi_res'} 
+            recursive=False
         )
         documents = loader.load()
         if not documents:
-            st.error("No compatible documents found. Please check the Folder ID and that the Service Account has 'Viewer' access.")
+            st.error("No compatible documents (Google Docs or PDFs) found in the folder. Please check the folder ID and sharing permissions.")
             st.stop()
             
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
@@ -81,6 +78,8 @@ def build_or_load_knowledge_base():
 # --- MAIN APP LOGIC ---
 vector_store = build_or_load_knowledge_base()
 
+# The QA chain is configured WITHOUT the strict prompt, matching your working version.
+# NOTE: I am putting the STRICT prompt back in, as the "I don't know" answer shows it was working.
 prompt_template = """
 Use the following pieces of context to answer the user's question. This is a closed-book task.
 If you don't know the answer based on the context provided, just say that you don't know the answer. Do not try to make up an answer.
@@ -94,14 +93,16 @@ STRICT_PROMPT = PromptTemplate(
     template=prompt_template, input_variables=["context", "question"]
 )
 
+# --- THIS IS THE KEY CHANGE ---
+# We are now using the "mmr" search type to find more relevant and diverse results.
 retriever = vector_store.as_retriever(search_type="mmr", search_kwargs={'k': 5})
 
 qa_chain = RetrievalQA.from_chain_type(
     llm=ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0, openai_api_key=OPENAI_API_KEY),
     chain_type="stuff",
-    retriever=retriever,
+    retriever=retriever, # Using the new, smarter retriever
     return_source_documents=True,
-    chain_type_kwargs={"prompt": STRICT_PROMPT}
+    chain_type_kwargs={"prompt": STRICT_PROMPT} # Using the strict prompt
 )
 
 # --- UI/UX DESIGN ---
@@ -109,9 +110,17 @@ with st.sidebar:
     if os.path.exists("logo.png"):
         st.image("logo.png", use_container_width=True)
     st.header("About This App")
-    st.markdown("This is an intelligent assistant for **Bina Bangsa School**.")
+    st.markdown("""
+    This is an intelligent assistant for **Bina Bangsa School**. 
+    
+    It is connected to a set of internal documents and can answer questions about their content.
+    """)
     st.header("How to Use")
-    st.markdown("Type your question in the chat box at the bottom of the screen and press Enter.")
+    st.markdown("""
+    1.  Type your question in the chat box at the bottom of the screen.
+    2.  Press Enter to get the answer.
+    3.  Your conversation will be displayed in the chat window.
+    """)
 
 st.title("📄 Bina Bangsa School Document Assistant")
 st.markdown("### Your intelligent search tool for school policies and documents.")
@@ -141,7 +150,7 @@ if query := st.chat_input("Ask a question about our documents..."):
             st.session_state.messages.append({"role": "assistant", "content": answer})
 
         except Exception as e:
-            error_message = f"An error occurred: {e}"
+            error_message = f"An error(s) occurred: {e}"
             with st.chat_message("assistant"):
                 st.error(error_message)
             st.session_state.messages.append({"role": "assistant", "content": error_message})

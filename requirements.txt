@@ -11,3 +11,7 @@ chromadb
 python-dotenv
 PyPDF2
 pysqlite3-binary
+# --- NEW LIBRARIES FOR OCR ---
+unstructured[local-inference]
+pikepdf
+pypdf
