@@ -150,7 +150,7 @@ if query := st.chat_input("Ask a question about our documents..."):
             st.session_state.messages.append({"role": "assistant", "content": answer})
 
         except Exception as e:
-            error_message = f"An error occurred: {e}"
+            error_message = f"An error(s) occurred: {e}"
             with st.chat_message("assistant"):
                 st.error(error_message)
             st.session_state.messages.append({"role": "assistant", "content": error_message})
