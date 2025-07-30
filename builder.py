@@ -1,4 +1,4 @@
-# builder.py (Final Corrected Version with Rebuild Logic)
+# builder.py (Final Corrected Version - Bypasses Caching)
 
 __import__('pysqlite3')
 import sys
@@ -7,7 +7,8 @@ sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 import streamlit as st
 import os
 import json
-import shutil # <-- NEW IMPORT for deleting directories
+import shutil
+import time # <-- NEW IMPORT
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
@@ -23,22 +24,19 @@ except Exception as e:
     st.error(f"Failed to load secrets: {e}")
     st.stop()
 
-PERSIST_DIRECTORY = "./chroma_db_build"
-
-INPUT_JSON = "./final_data.json"
+# Use the new, unique filename
+INPUT_JSON = "./final_data.json" 
 
 if st.button("Build Knowledge Base from JSON"):
     if not os.path.exists(INPUT_JSON):
-        st.error(f"FATAL: '{INPUT_JSON}' not found in repository. Please run the local extractor script first.")
+        st.error(f"FATAL: '{INPUT_JSON}' not found in repository. Please run the local extractor script and push the file.")
         st.stop()
         
-    # --- THIS IS THE NEW, CORRECTED LOGIC ---
-    # It checks if the database directory already exists from a previous run.
-    if os.path.exists(PERSIST_DIRECTORY):
-        st.info("Existing database found on the server. Deleting it to ensure a fresh build.")
-        # This command recursively deletes the entire directory and its contents.
-        shutil.rmtree(PERSIST_DIRECTORY)
-        st.info("Old database deleted.")
+    # --- THIS IS THE NEW, SIMPLER LOGIC ---
+    # Create a new, unique directory name using the current timestamp
+    timestamp = int(time.time())
+    PERSIST_DIRECTORY = f"./chroma_db_{timestamp}"
+    st.info(f"Creating a fresh database in new directory: {PERSIST_DIRECTORY}")
     # --- END OF NEW LOGIC ---
 
     with st.spinner("Loading text data and building fresh knowledge base..."):
@@ -55,17 +53,18 @@ if st.button("Build Knowledge Base from JSON"):
             splits = text_splitter.split_documents(documents)
             st.write(f"Split documents into {len(splits)} chunks.")
 
-            # 3. Create Vector Store (on the Linux server)
+            # 3. Create Vector Store (in the new, unique directory)
             embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
             vector_store = Chroma.from_documents(
                 documents=splits,
                 embedding=embeddings,
                 persist_directory=PERSIST_DIRECTORY
             )
-            st.success("Fresh Knowledge Base built successfully!")
+            st.success(f"Fresh Knowledge Base built successfully in '{PERSIST_DIRECTORY}'!")
 
             # 4. Zip and provide a download link
-            zip_filename = "chroma_db"
+            # We will still name the downloaded file chroma_db.zip for consistency
+            zip_filename = "chroma_db" 
             shutil.make_archive(zip_filename, 'zip', PERSIST_DIRECTORY)
             with open(f"{zip_filename}.zip", "rb") as f:
                 st.download_button(
