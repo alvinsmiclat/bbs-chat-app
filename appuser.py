@@ -1,4 +1,4 @@
-# appuser.py (Final Version with Logo and Professional Chat Interface)
+# appuser.py (Final Version built on the user-confirmed stable base)
 
 # This is the crucial hot-fix for ChromaDB on Streamlit Community Cloud.
 __import__('pysqlite3')
@@ -14,7 +14,7 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain.chains import RetrievalQA
 from langchain_openai import ChatOpenAI
-from langchain.prompts import PromptTemplate
+# NOTE: PromptTemplate is not needed in this version because we are not using the strict prompt.
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
@@ -31,18 +31,21 @@ try:
     credentials_path = "google_creds.json"
     with open(credentials_path, "w") as f:
         json.dump(google_creds_dict, f)
-except (KeyError, FileNotFoundError):
+except (KeyError, FileNotFoundError) as e:
     st.error("🚨 **Error:** Secrets not found. This app is not configured correctly. Please contact the administrator.")
     st.stop()
 
 # --- CONSTANTS ---
 PERSIST_DIRECTORY = "./chroma_db"
+# This ID is from the version you confirmed was working.
 GOOGLE_FOLDER_ID = "1DldLKFlvopu3dhauAHGtdB5UK87CntNn"
 
-# --- KNOWLEDGE BASE LOGIC ---
+# --- KNOWLEDGE BASE LOGIC (This is from your stable code) ---
 @st.cache_resource(show_spinner="Connecting to documents and preparing knowledge base...")
 def build_or_load_knowledge_base():
     if not os.path.exists(PERSIST_DIRECTORY):
+        st.write("First-time setup: Building the knowledge base. This may take a few minutes...")
+        
         loader = GoogleDriveLoader(
             folder_id=GOOGLE_FOLDER_ID,
             file_types=["document", "pdf"],
@@ -51,10 +54,12 @@ def build_or_load_knowledge_base():
         )
         documents = loader.load()
         if not documents:
-            st.error("No compatible documents found. Please check the Folder ID and that the Service Account has 'Viewer' access.")
+            st.error("No compatible documents (Google Docs or PDFs) found in the folder. Please check the folder ID and sharing permissions.")
             st.stop()
+            
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
         splits = text_splitter.split_documents(documents)
+        
         embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
         vector_store = Chroma.from_documents(
             documents=splits,
@@ -62,6 +67,7 @@ def build_or_load_knowledge_base():
             persist_directory=PERSIST_DIRECTORY
         )
     else:
+        st.write("Loading existing knowledge base...")
         embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
         vector_store = Chroma(
             persist_directory=PERSIST_DIRECTORY,
@@ -69,60 +75,40 @@ def build_or_load_knowledge_base():
         )
     return vector_store
 
-# --- MAIN APP LOGIC ---
+# --- MAIN APP LOGIC (This is from your stable code) ---
 vector_store = build_or_load_knowledge_base()
 
-prompt_template = """
-Use the following pieces of context to answer the user's question. This is a closed-book task.
-If you don't know the answer based on the context provided, just say that you don't know the answer. Do not try to make up an answer.
----
-CONTEXT: {context}
----
-QUESTION: {question}
-Answer:
-"""
-STRICT_PROMPT = PromptTemplate(
-    template=prompt_template, input_variables=["context", "question"]
-)
-
-retriever = vector_store.as_retriever(search_kwargs={'k': 5})
-
+# The QA chain is now configured WITHOUT the strict prompt, matching your working version.
 qa_chain = RetrievalQA.from_chain_type(
     llm=ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0, openai_api_key=OPENAI_API_KEY),
     chain_type="stuff",
-    retriever=retriever,
-    return_source_documents=False,
-    chain_type_kwargs={"prompt": STRICT_PROMPT}
+    retriever=vector_store.as_retriever(),
+    return_source_documents=True # We will keep this True but hide it from the UI.
 )
 
-# --- UI/UX DESIGN ---
+# --- NEW UI/UX DESIGN ---
+
 with st.sidebar:
-    # --- THIS IS THE NEW CODE FOR THE LOGO ---
-    # It will look for a file named 'logo.png' in your repository.
     if os.path.exists("logo.png"):
         st.image("logo.png", use_column_width=True)
-    # --- END OF LOGO CODE ---
-
     st.header("About This App")
     st.markdown("""
     This is an intelligent assistant for **Bina Bangsa School**. 
     
-    It is connected to a specific set of internal documents and can answer questions based only on their content.
+    It is connected to a set of internal documents and can answer questions about their content.
     """)
     st.header("How to Use")
     st.markdown("""
     1.  Type your question in the chat box at the bottom of the screen.
     2.  Press Enter to get the answer.
-    3.  The assistant will search the documents and provide a response.
-    4.  Your conversation will be displayed in the chat window.
+    3.  Your conversation will be displayed in the chat window.
     """)
-    # The admin-focused st.info box has been removed.
 
 st.title("📄 Bina Bangsa School Document Assistant")
 st.markdown("### Your intelligent search tool for school policies and documents.")
 st.write("---")
 
-# --- CHAT INTERFACE LOGIC ---
+# --- NEW CHAT INTERFACE LOGIC ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -135,7 +121,7 @@ if query := st.chat_input("Ask a question about our documents..."):
     with st.chat_message("user"):
         st.markdown(query)
 
-    with st.spinner("Searching the knowledge base for an answer..."):
+    with st.spinner("Searching for an answer..."):
         try:
             result = qa_chain.invoke({"query": query})
             answer = result["result"]
