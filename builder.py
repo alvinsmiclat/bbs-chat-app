@@ -1,4 +1,4 @@
-# builder.py (Runs on Streamlit Cloud to create the Linux-compatible DB)
+# builder.py (Final Corrected Version with Rebuild Logic)
 
 __import__('pysqlite3')
 import sys
@@ -7,7 +7,7 @@ sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 import streamlit as st
 import os
 import json
-import shutil
+import shutil # <-- NEW IMPORT for deleting directories
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
@@ -31,17 +31,25 @@ if st.button("Build Knowledge Base from JSON"):
         st.error(f"FATAL: '{INPUT_JSON}' not found in repository. Please run the local extractor script first.")
         st.stop()
         
-    with st.spinner("Loading text data and building knowledge base..."):
+    # --- THIS IS THE NEW, CORRECTED LOGIC ---
+    # It checks if the database directory already exists from a previous run.
+    if os.path.exists(PERSIST_DIRECTORY):
+        st.info("Existing database found on the server. Deleting it to ensure a fresh build.")
+        # This command recursively deletes the entire directory and its contents.
+        shutil.rmtree(PERSIST_DIRECTORY)
+        st.info("Old database deleted.")
+    # --- END OF NEW LOGIC ---
+
+    with st.spinner("Loading text data and building fresh knowledge base..."):
         try:
             # 1. Load the clean text from our JSON file
             with open(INPUT_JSON, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
-            # Convert the data back into LangChain Document objects
             documents = [Document(page_content=item['page_content'], metadata=item['metadata']) for item in data]
             st.write(f"Loaded {len(documents)} document sections from JSON file.")
 
-            # 2. Split (optional but good practice)
+            # 2. Split
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
             splits = text_splitter.split_documents(documents)
             st.write(f"Split documents into {len(splits)} chunks.")
@@ -53,7 +61,7 @@ if st.button("Build Knowledge Base from JSON"):
                 embedding=embeddings,
                 persist_directory=PERSIST_DIRECTORY
             )
-            st.success("Knowledge Base built successfully in Linux format!")
+            st.success("Fresh Knowledge Base built successfully!")
 
             # 4. Zip and provide a download link
             zip_filename = "chroma_db"
