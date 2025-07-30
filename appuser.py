@@ -1,4 +1,4 @@
-# appuser.py (Final Version with Professional UI/UX)
+# appuser.py (Final Version with Professional UI/UX and Source Display)
 
 # This is the crucial hot-fix for ChromaDB on Streamlit Community Cloud.
 __import__('pysqlite3')
@@ -17,10 +17,9 @@ from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
 
 # --- PAGE CONFIGURATION ---
-# This is a one-time setup for the page.
 st.set_page_config(
     page_title="BBS Document Assistant",
-    page_icon="📄", # A relevant emoji for the page icon
+    page_icon="📄",
     layout="wide"
 )
 
@@ -44,7 +43,6 @@ GOOGLE_FOLDER_ID = "1DldLKFlvopu3dhauAHGtdB5UK87CntNn"
 @st.cache_resource(show_spinner="Connecting to documents and preparing knowledge base...")
 def build_or_load_knowledge_base():
     if not os.path.exists(PERSIST_DIRECTORY):
-        # First-time setup message will be shown by the spinner
         loader = GoogleDriveLoader(
             folder_id=GOOGLE_FOLDER_ID,
             file_types=["document", "pdf"],
@@ -53,7 +51,7 @@ def build_or_load_knowledge_base():
         )
         documents = loader.load()
         if not documents:
-            st.error("No compatible documents (Google Docs or PDFs) found in the folder. Please check the folder ID and sharing permissions.")
+            st.error("No compatible documents found. Please check the Folder ID and that the Service Account has 'Viewer' access.")
             st.stop()
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
         splits = text_splitter.split_documents(documents)
@@ -89,17 +87,16 @@ STRICT_PROMPT = PromptTemplate(
 
 retriever = vector_store.as_retriever(search_kwargs={'k': 5})
 
+# The QA chain is now configured to return the source documents again.
 qa_chain = RetrievalQA.from_chain_type(
     llm=ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0, openai_api_key=OPENAI_API_KEY),
     chain_type="stuff",
     retriever=retriever,
-    return_source_documents=True,
+    return_source_documents=True, # <-- Set back to True
     chain_type_kwargs={"prompt": STRICT_PROMPT}
 )
 
 # --- UI/UX DESIGN ---
-
-# Sidebar for information and instructions
 with st.sidebar:
     st.header("About This App")
     st.markdown("""
@@ -107,27 +104,21 @@ with st.sidebar:
     
     It is connected to a specific set of internal documents and can answer questions based only on their content.
     """)
-    
     st.header("How to Use")
     st.markdown("""
     1.  Type your question in the text box on the main page.
     2.  Press Enter to get the answer.
-    3.  The assistant will search the documents and provide a response.
-    4.  If the answer isn't in the documents, it will say so.
+    3.  You can click "Show Source Documents" to see which files were used to generate the answer.
     """)
-    st.info("The knowledge base was updated when this app was last deployed. For new documents to be included, the app needs to be refreshed by an admin.")
+    st.info("The knowledge base is updated when the app is deployed. To add new documents, an admin must update and redeploy the application.")
 
-
-# Main page title and introduction
 st.title("📄 Bina Bangsa School Document Assistant")
 st.markdown("### Your intelligent search tool for school policies and documents.")
-st.write("---") # A horizontal line for visual separation
+st.write("---")
 
-# Container for the main interaction
 chat_container = st.container()
 
 with chat_container:
-    # Get user input
     query = st.text_input(
         "**Ask a question about the content of our documents:**",
         placeholder="e.g., What is the school's policy on password security?"
@@ -136,21 +127,28 @@ with chat_container:
     if query:
         with st.spinner("Searching the knowledge base for an answer..."):
             try:
-                # Get the result from the QA chain
                 result = qa_chain.invoke({"query": query})
                 
-                # Display the answer in a styled box
                 st.markdown("#### Answer")
                 st.info(result["result"])
-
-                # Display the source documents in an expander
-                with st.expander("Click to see the source documents used for this answer"):
-                    for doc in result["source_documents"]:
-                        # We use st.markdown to format the source nicely
-                        st.markdown(f"**Source:** `{doc.metadata.get('source', 'Unknown')}`")
-                        # Display a snippet of the page content
-                        st.markdown(f"> {doc.page_content[:350]}...")
-                        st.write("---")
+                
+                # --- THIS IS THE NEW, IMPROVED SOURCE DISPLAY LOGIC ---
+                with st.expander("Show Source Documents"):
+                    # Get the source documents from the result
+                    source_documents = result.get("source_documents", [])
+                    
+                    if source_documents:
+                        # Create a set of unique source filenames
+                        unique_sources = set()
+                        for doc in source_documents:
+                            # os.path.basename gets the clean filename from a long path
+                            unique_sources.add(os.path.basename(doc.metadata.get("source", "Unknown Source")))
+                        
+                        # Display the unique source files
+                        for source in sorted(list(unique_sources)):
+                            st.success(f"Found in: {source}")
+                    else:
+                        st.warning("No specific source documents were identified for this answer.")
 
             except Exception as e:
                 st.error(f"An error occurred while processing your question: {e}")
