@@ -1,4 +1,4 @@
-# appuser.py (Final Version with Professional UI/UX and Source Display)
+# appuser.py (Final Version with Professional Chat Interface)
 
 # This is the crucial hot-fix for ChromaDB on Streamlit Community Cloud.
 __import__('pysqlite3')
@@ -87,12 +87,12 @@ STRICT_PROMPT = PromptTemplate(
 
 retriever = vector_store.as_retriever(search_kwargs={'k': 5})
 
-# The QA chain is now configured to return the source documents again.
+# The QA chain is configured to NOT return the source documents.
 qa_chain = RetrievalQA.from_chain_type(
     llm=ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0, openai_api_key=OPENAI_API_KEY),
     chain_type="stuff",
     retriever=retriever,
-    return_source_documents=True, # <-- Set back to True
+    return_source_documents=False, # Set to False for a clean UI
     chain_type_kwargs={"prompt": STRICT_PROMPT}
 )
 
@@ -106,9 +106,10 @@ with st.sidebar:
     """)
     st.header("How to Use")
     st.markdown("""
-    1.  Type your question in the text box on the main page.
+    1.  Type your question in the chat box at the bottom of the screen.
     2.  Press Enter to get the answer.
-    3.  You can click "Show Source Documents" to see which files were used to generate the answer.
+    3.  The assistant will search the documents and provide a response.
+    4.  Your conversation will be displayed in the chat window.
     """)
     st.info("The knowledge base is updated when the app is deployed. To add new documents, an admin must update and redeploy the application.")
 
@@ -116,39 +117,41 @@ st.title("📄 Bina Bangsa School Document Assistant")
 st.markdown("### Your intelligent search tool for school policies and documents.")
 st.write("---")
 
-chat_container = st.container()
+# --- CHAT INTERFACE LOGIC ---
 
-with chat_container:
-    query = st.text_input(
-        "**Ask a question about the content of our documents:**",
-        placeholder="e.g., What is the school's policy on password security?"
-    )
+# Initialize chat history in session state if it doesn't exist
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-    if query:
-        with st.spinner("Searching the knowledge base for an answer..."):
-            try:
-                result = qa_chain.invoke({"query": query})
-                
-                st.markdown("#### Answer")
-                st.info(result["result"])
-                
-                # --- THIS IS THE NEW, IMPROVED SOURCE DISPLAY LOGIC ---
-                with st.expander("Show Source Documents"):
-                    # Get the source documents from the result
-                    source_documents = result.get("source_documents", [])
-                    
-                    if source_documents:
-                        # Create a set of unique source filenames
-                        unique_sources = set()
-                        for doc in source_documents:
-                            # os.path.basename gets the clean filename from a long path
-                            unique_sources.add(os.path.basename(doc.metadata.get("source", "Unknown Source")))
-                        
-                        # Display the unique source files
-                        for source in sorted(list(unique_sources)):
-                            st.success(f"Found in: {source}")
-                    else:
-                        st.warning("No specific source documents were identified for this answer.")
+# Display past messages from the chat history
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-            except Exception as e:
-                st.error(f"An error occurred while processing your question: {e}")
+# Get new user input using the chat_input widget
+if query := st.chat_input("Ask a question about our documents..."):
+    # Add user's message to the chat history
+    st.session_state.messages.append({"role": "user", "content": query})
+    # Display the user's message in the chat
+    with st.chat_message("user"):
+        st.markdown(query)
+
+    # Get the assistant's response
+    with st.spinner("Searching the knowledge base for an answer..."):
+        try:
+            # Get the result from the QA chain
+            result = qa_chain.invoke({"query": query})
+            answer = result["result"]
+            
+            # Display the assistant's response in the chat
+            with st.chat_message("assistant"):
+                st.markdown(answer)
+            
+            # Add assistant's response to the chat history
+            st.session_state.messages.append({"role": "assistant", "content": answer})
+
+        except Exception as e:
+            error_message = f"An error occurred: {e}"
+            with st.chat_message("assistant"):
+                st.error(error_message)
+            st.session_state.messages.append({"role": "assistant", "content": error_message})
