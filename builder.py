@@ -24,7 +24,8 @@ except Exception as e:
     st.stop()
 
 PERSIST_DIRECTORY = "./chroma_db_build"
-INPUT_JSON = "./extracted_data.json"
+
+INPUT_JSON = "./final_data.json"
 
 if st.button("Build Knowledge Base from JSON"):
     if not os.path.exists(INPUT_JSON):
