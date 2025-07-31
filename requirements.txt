@@ -5,8 +5,9 @@ langchain-openai
 langchain-community
 chromadb
 pysqlite3-binary
-
-# --- ADD THESE MISSING LIBRARIES ---
 google-api-python-client
 google-auth-httplib2
 google-auth-oauthlib
+
+# --- ADD THIS MISSING LIBRARY ---
+PyPDF2
